@@ -38,6 +38,26 @@
         {
           "Statement": [ "dont hurt me" ],
           "Response": [ "No more!" ]
+        },
+        {
+          "Statement": [ "in west Philadelphia born and raised" ],
+          "Response": [ "On the playground where I spent most of my days." ]
+        },
+        {
+          "Statement": [ "i got in one little fight and my mom got scared" ],
+          "Response": [ "And said 'You're moving with your auntie and uncle in Bel-air'!" ]
+        },
+        {
+          "Statement": [ "inconceivable" ],
+          "Response": [ "You keep using that word. I do not think it means what you think it means." ]
+        },
+        {
+          "Statement": [ "that is so fetch", "thats so fetch" ],
+          "Response": [ "Gretchen, stop trying to make fetch happen! It's not going to happen!" ]
+        },
+        {
+          "Statement": [ "oh no" ],
+          "Response": [ "OHH YEAAAHH!", "https://media.giphy.com/media/Heqbbp1m3mzJe/giphy.gif" ]
         }
       ]
     }

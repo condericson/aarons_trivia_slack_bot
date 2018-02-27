@@ -84,9 +84,16 @@ namespace TriviaBot3
                     if (message.text[0] == '{')
                     {
                         pendingQuestionId = RecordQuestion(message.text);
-                        PostMessage(adminId, "Here's what you sent me:");
-                        PostQuestion(pendingQuestionId, adminId);
-                        PostMessage(adminId, "Want me to post this? Say 'yes post' or 'no post'.");
+                        if (pendingQuestionId != Guid.Empty)
+                        {
+                            PostMessage(adminId, "Here's what you sent me:");
+                            PostQuestion(pendingQuestionId, adminId);
+                            PostMessage(adminId, "Want me to post this? Say 'yes post' or 'no post'.");
+                        }
+                        else
+                        {
+                            PostMessage(adminDM, "Try again.");
+                        }
                     }
                     else if (messageText == "yes post")
                     {
@@ -94,8 +101,8 @@ namespace TriviaBot3
                         {
                             PostQuestion(pendingQuestionId, triviaChannelId);
                             pendingQuestionId = Guid.Empty;
-                            //SetReminder();
-                            //SetEndRound();
+                            SetReminder();
+                            SetEndRound();
                         }
                         else
                         {
@@ -110,6 +117,7 @@ namespace TriviaBot3
                     }
                     else if (messageText == "score")
                     {
+                        PostMessage(adminDM, "Getting scores...");
                         PostMessage(adminId, CheckAllScores());
                     }
                     else if (messageText.Contains("delete previous"))
@@ -130,10 +138,10 @@ namespace TriviaBot3
                     {
                         PostMessage(adminDM, "Trivia bot no end.");
                     }
-                    else if (messageText.Contains("history"))
-                    {
-                        GetMessageHistory();
-                    }
+                    //else if (messageText.Contains("history"))
+                    //{
+                    //    GetMessageHistory();
+                    //}
                     else if (messageText == "test")
                     {
                         PostMessage(message.channel, "Test passed!");
@@ -170,8 +178,13 @@ namespace TriviaBot3
                                           "Make me send a DM to a user by saying 'tell user @[slackmention] [Here's the sentence I want to send]'.\n" +
                                           "Add attempts for a player by saying 'add attempt for @[slackmention] [letter]'.\n" +
                                           "Get current score in trivia channel by saying 'current score'.\n" +
-                                          "Get current score in this channel by saying 'score'.\n";
+                                          "Get current score in this channel by saying 'score'.\n" +
+                                          "Get timespan by saying 'check timespan'.";
                         PostMessage(adminDM, helpMessage);
+                    }
+                    else if (message.text.Contains("check timespan"))
+                    {
+                        CheckTimeSpan();
                     }
                     else
                     {
@@ -301,7 +314,7 @@ namespace TriviaBot3
 
         Guid RecordQuestion(string json)
         {
-            Console.WriteLine("Recording question");
+            PostMessage(adminDM, "Recording question...");
             try
             {
                 var input = JObject.Parse(json);
@@ -336,7 +349,7 @@ namespace TriviaBot3
                 {
                     QuestionId = Guid.NewGuid(),
                     Statement = questionStatement,
-                    Date = DateTime.Now,
+                    Date = DateTime.UtcNow,
                     Answers = setOfAnswers.OrderBy(x => x.Statement).ToList(),
                 };
                 dbcontext.Questions.Add(question);
@@ -346,6 +359,7 @@ namespace TriviaBot3
             catch (Exception ex)
             {
                 ExceptionLogging(ex);
+                PostMessage(adminDM, "Whoops, I broke.");
                 return Guid.Empty;
             }
 
@@ -365,7 +379,7 @@ namespace TriviaBot3
             postedTriviaQuestion += "\n*Do not reply with your answer in this channel!*\n" +
                                     "\nSo players remain anonymous, make sure you send a direct message to @triviabot with the LETTER of your guess!\n" +
                                     "\nPlease no Googling the answer!\n" +
-                                    "\nYou have until *4:00pm* to answer the question. Good luck!";
+                                    "\nYou have *8 hours* (until around 4pm) to answer the question. Good luck!";
             PostMessage(channelId, postedTriviaQuestion);
         }
 
@@ -397,7 +411,7 @@ namespace TriviaBot3
             var question = dbcontext.Questions.OrderByDescending(x => x.Date).First();
             var answers = dbcontext.Answers.Where(x => x.Question.QuestionId == question.QuestionId).OrderBy(x => x.Statement).ToList();
             currentPlayer = dbcontext.Players.FirstOrDefault(x => x.PlayerSlackId == message.user);
-            if (question.Date + timespan < DateTime.Now)
+            if ((((question.Date + timespan) - (DateTime.UtcNow)).TotalMilliseconds) < 0)
             {
                 PostMessage(adminDM, currentPlayer.PlayerFirstName + " " + currentPlayer.PlayerLastName + " answered too late.");
                 return ("Thanks " + currentPlayer.PlayerFirstName + " for your answer! Unfortunately, you've answered after the end of the round. Check back soon for another question!");
@@ -435,7 +449,8 @@ namespace TriviaBot3
             dbcontext.SaveChanges();
 
             var postScore = CheckPlayerScores(message.user);
-            PostMessage(adminDM, currentPlayer.PlayerFirstName + " " + currentPlayer.PlayerLastName + " just guessed " + messageText.ToUpper() + "! Previous score was " + previousScore + ". Current score is " + postScore + ".");
+            var result = (postScore == previousScore) ? "Incorrect" : "Correct";
+            PostMessage(adminDM, result + "! " + currentPlayer.PlayerFirstName + " " + currentPlayer.PlayerLastName + " just guessed " + messageText.ToUpper() + "! Previous score: " + previousScore + ". Current score: " + postScore + ".");
             var responseToPlayer = "Thanks " + currentPlayer.PlayerFirstName + "! You answered " + messageText.ToUpper() + ". " + playersAnswer + ". \n";
             if (correctOrIncorrect)
             {
@@ -518,7 +533,7 @@ namespace TriviaBot3
         {
             string scoreSheet = "Current Scores: \n";
 
-            var playerList = dbcontext.Players.OrderByDescending(p => dbcontext.Attempts.Where(a => a.Player.PlayerId == p.PlayerId && a.Correct).Count()).ToList();
+            var playerList = dbcontext.Players.OrderByDescending(p => dbcontext.Attempts.Where(a => a.Player.PlayerId == p.PlayerId && a.Correct).Count()).ThenBy(p => p.PlayerFirstName).ToList();
 
             if (playerList == null)
             {
@@ -668,7 +683,7 @@ namespace TriviaBot3
         void DeleteHistory()
         {
             dbcontext.Attempts.RemoveRange(dbcontext.Attempts.ToList());
-            dbcontext.Questions.RemoveRange(dbcontext.Questions.ToList());
+            //dbcontext.Questions.RemoveRange(dbcontext.Questions.ToList());
             dbcontext.Players.RemoveRange(dbcontext.Players.ToList());
             dbcontext.SaveChanges();
             PostMessage(adminDM, "Deleted history");
@@ -871,10 +886,10 @@ namespace TriviaBot3
         void SetReminder()
         {
             var milliseconds = (timespan - new TimeSpan(0, 1, 0, 0)).TotalMilliseconds;
-            var timer = new System.Timers.Timer(milliseconds);
-            timer.Elapsed += ReminderEvent;
-            timer.AutoReset = false;
-            timer.Enabled = true;
+            var reminderTimer = new System.Timers.Timer(milliseconds);
+            reminderTimer.Elapsed += ReminderEvent;
+            reminderTimer.AutoReset = false;
+            reminderTimer.Enabled = true;
         }
 
         private void ReminderEvent(Object source, ElapsedEventArgs e)
@@ -885,10 +900,10 @@ namespace TriviaBot3
         void SetEndRound()
         {
             var milliseconds = (timespan).TotalMilliseconds;
-            var timer = new System.Timers.Timer(milliseconds);
-            timer.Elapsed += EndRoundEvent;
-            timer.AutoReset = false;
-            timer.Enabled = true;
+            var endRoundTimer = new System.Timers.Timer(milliseconds);
+            endRoundTimer.Elapsed += EndRoundEvent;
+            endRoundTimer.AutoReset = false;
+            endRoundTimer.Enabled = true;
         }
 
         private void EndRoundEvent(Object source, ElapsedEventArgs e)
@@ -896,7 +911,12 @@ namespace TriviaBot3
             PostMessage(triviaChannelId, EndRound());
         }
 
-
+        private void CheckTimeSpan()
+        {
+            var question = dbcontext.Questions.OrderByDescending(x => x.Date).First();
+            var timeLeft = (((question.Date + timespan) - (DateTime.UtcNow)).TotalMinutes);
+            PostMessage(adminDM, "Players have " + timeLeft + " minutes left.");
+        }
 
 
 
